@@ -1,0 +1,73 @@
+using UnityEngine;
+using UnityEngine.UI;
+
+public class GameManager : MonoBehaviour
+{
+    public int coins;
+    public int diamonds;
+    public int tickets;
+    public int money;
+    public Text coinsText;
+    public Text diamondsText;
+    public Text ticketsText;
+    public Text moneyText;
+
+    void Start()
+    {
+        // Initialize currency counts
+        coins = 0;
+        diamonds = 0;
+        tickets = 0;
+        money = 0;
+        UpdateUI();
+    }
+
+    void UpdateUI()
+    {
+        coinsText.text = "Coins: " + coins;
+        diamondsText.text = "Diamonds: " + diamonds;
+        ticketsText.text = "Tickets: " + tickets;
+        moneyText.text = "Money: " + money;
+    }
+
+    public void AddCoins(int amount)
+    {
+        coins += amount;
+        UpdateUI();
+    }
+
+    public void AddDiamonds(int amount)
+    {
+        diamonds += amount;
+        UpdateUI();
+    }
+
+    public void AddTickets(int amount)
+    {
+        tickets += amount;
+        UpdateUI();
+    }
+
+    public void AddMoney(int amount)
+    {
+        money += amount;
+        UpdateUI();
+    }
+
+    public void BuyCharacter() { /* Implementation here */ }
+    public void BuyOutfit() { /* Implementation here */ }
+    public void SellItem() { /* Implementation here */ }
+    public void PlayGame() { /* Implementation for game mechanics */ }
+}
+
+public class Player : MonoBehaviour
+{
+    public int speed;
+    public int energy;
+    public int power;
+
+    void Update()
+    {
+        // Move player logic
+    }
+}
