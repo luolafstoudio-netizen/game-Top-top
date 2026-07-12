@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Top-Top | Endless Sky Adventure</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
 <style>
@@ -1066,89 +1065,74 @@ function checkAchievements(){
 }
 
 /* ================================================================
-   PART 6: 3D FLIGHT GAME (Three.js endless runner/flyer)
+   PART 6: 2D FLIGHT GAME (HTML5 Canvas endless flyer)
 ================================================================ */
 let G = null; // game engine state, created lazily
 function initFlightEngine(){
   const wrap = document.getElementById('gameCanvasWrap');
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(62, wrap.clientWidth/wrap.clientHeight, 0.1, 300);
-  camera.position.set(0,2.2,7);
-  camera.lookAt(0,1.2,-10);
-  const renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setSize(wrap.clientWidth, wrap.clientHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-  wrap.innerHTML=''; wrap.appendChild(renderer.domElement);
+  wrap.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  wrap.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
 
-  const amb = new THREE.AmbientLight(0xffffff,0.9); scene.add(amb);
-  const dl = new THREE.DirectionalLight(0xffffff,0.8); dl.position.set(5,10,5); scene.add(dl);
-
-  const charGroup = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16), new THREE.MeshStandardMaterial({color:0xffffff, emissive:0x222222}));
-  charGroup.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28,16,16), new THREE.MeshStandardMaterial({color:0xffffff}));
-  head.position.set(0,0.55,0.25); charGroup.add(head);
-  const earL = new THREE.Mesh(new THREE.ConeGeometry(0.1,0.3,8), new THREE.MeshStandardMaterial({color:0xffffff}));
-  earL.position.set(-0.15,0.85,0.2); charGroup.add(earL);
-  const earR = earL.clone(); earR.position.x=0.15; charGroup.add(earR);
-  const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.08,0.35), new THREE.MeshStandardMaterial({color:0xffffff,transparent:true,opacity:.9}));
-  wingL.position.set(-0.55,0.1,0); charGroup.add(wingL);
-  const wingR = wingL.clone(); wingR.position.x=0.55; charGroup.add(wingR);
-  const glowRing = new THREE.Mesh(new THREE.TorusGeometry(0.65,0.03,8,20), new THREE.MeshBasicMaterial({color:0x3ce6ff}));
-  glowRing.rotation.x = Math.PI/2; glowRing.position.y=-0.1; charGroup.add(glowRing);
-  scene.add(charGroup);
-
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40,400), new THREE.MeshStandardMaterial({color:0x222222}));
-  ground.rotation.x=-Math.PI/2; ground.position.y=-2.2; ground.position.z=-150;
-  scene.add(ground);
-
-  window.addEventListener('resize', ()=>{
-    if(!G) return;
-    G.camera.aspect = wrap.clientWidth/wrap.clientHeight; G.camera.updateProjectionMatrix();
-    G.renderer.setSize(wrap.clientWidth, wrap.clientHeight);
-  });
+  function resize(){
+    canvas.width = wrap.clientWidth * devicePixelRatio;
+    canvas.height = wrap.clientHeight * devicePixelRatio;
+    canvas.style.width = wrap.clientWidth+'px';
+    canvas.style.height = wrap.clientHeight+'px';
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    if(G){ G.w = wrap.clientWidth; G.h = wrap.clientHeight; }
+  }
 
   G = {
-    scene, camera, renderer, wrap, charGroup, body, head, earL, earR, wingL, wingR, glowRing, ground,
-    obstacles: [], running:false, playerX:0, playerY:1.2, targetX:0, targetY:1.2,
+    canvas, ctx, wrap,
+    w: wrap.clientWidth, h: wrap.clientHeight,
+    running:false, loopStarted:false,
+    playerX:0, playerY:0, targetY:0, velY:0,
+    obstacles:[], particles:[], clouds:[],
     score:0, combo:1, lives:3, distance:0, coinsCollected:0, gatesPassed:0,
-    speed:16, lastSpawnZ:-20, biomeIndex:0, elapsed:0, lastBiomeSwitch:0,
+    speed:230, lastSpawnX:0, elapsed:0, lastBiomeSwitch:0, biomeIndex:0,
+    colors:{body:'#ff7a3c', accent:'#3ce6ff'},
+    flapPhase:0,
   };
+  resize();
+  window.addEventListener('resize', resize);
 
   wrap.addEventListener('mousemove', onFlightPointerMove);
-  wrap.addEventListener('touchmove', e=>{ if(e.touches[0]) onFlightPointerMove(e.touches[0]); }, {passive:true});
+  wrap.addEventListener('touchmove', e=>{ if(e.touches[0]) onFlightPointerMove(e.touches[0]); e.preventDefault(); }, {passive:false});
+  wrap.addEventListener('touchstart', e=>{ if(e.touches[0]) onFlightPointerMove(e.touches[0]); }, {passive:true});
+
+  for(let i=0;i<14;i++){
+    G.clouds.push({x:Math.random()*G.w, y:Math.random()*G.h*0.6, r:20+Math.random()*40, layer: Math.random()<0.5?1:2});
+  }
 }
 function onFlightPointerMove(e){
   if(!G) return;
   const rect = G.wrap.getBoundingClientRect();
-  const nx = ((e.clientX-rect.left)/rect.width)*2-1;
-  const ny = ((e.clientY-rect.top)/rect.height)*2-1;
-  G.targetX = nx*4.2;
-  G.targetY = 1.2 + (-ny)*2.4;
+  const ny = (e.clientY-rect.top)/rect.height;
+  G.targetY = Math.max(0.08,Math.min(0.92, ny)) * G.h;
 }
 
 function applyCharacterAppearance(){
   const c = charById(player.equippedCharacter);
   const costume = player.equippedCostume ? costumeById(player.equippedCostume) : null;
-  const color = new THREE.Color(c.color);
-  G.body.material.color.set(color); G.head.material.color.set(color);
-  G.earL.material.color.set(color); G.earR.material.color.set(color);
-  const accent = costume ? new THREE.Color(tierColor(costume.tier)) : color;
-  G.wingL.material.color.set(accent); G.wingR.material.color.set(accent);
-  G.glowRing.material.color.set(costume ? accent : 0x3ce6ff);
+  G.colors.body = '#'+c.color.toString(16).padStart(6,'0');
+  G.colors.accent = costume ? tierColorHex(costume.tier) : '#3ce6ff';
 }
-function tierColor(t){ return {Common:0x8b93c4,Bronze:0xcd7f32,Silver:0xc0c0c0,Golden:0xffd700,Special:0x3ce6ff,Premium:0xaa66ff,Plus:0xff4fd8}[t]||0xffffff; }
+function tierColorHex(t){ return {Common:'#8b93c4',Bronze:'#cd7f32',Silver:'#c0c0c0',Golden:'#ffd700',Special:'#3ce6ff',Premium:'#aa66ff',Plus:'#ff4fd8'}[t]||'#ffffff'; }
 
 function setBiome(index){
-  const b = BIOMES[index%BIOMES.length];
-  G.scene.fog = new THREE.FogExp2(b.fog, 0.028);
-  G.renderer.setClearColor(b.sky);
-  G.ground.material.color.set(b.ground);
+  G.biomeIndex = index % BIOMES.length;
+  const b = BIOMES[G.biomeIndex];
+  G.biomeSky1 = hexOf(b.sky);
+  G.biomeGround = hexOf(b.ground);
+  G.biomeAccent = hexOf(b.accent);
   document.getElementById('hudBiome').textContent = b.name;
 }
+function hexOf(num){ return '#'+((num>>16)&255).toString(16).padStart(2,'0')+((num>>8)&255).toString(16).padStart(2,'0')+(num&255).toString(16).padStart(2,'0'); }
 function nextBiome(){
   let idx; do{ idx = Math.floor(Math.random()*BIOMES.length); }while(idx===G.biomeIndex && BIOMES.length>1);
-  G.biomeIndex = idx; setBiome(idx);
+  setBiome(idx);
 }
 
 function computeStats(){
@@ -1174,11 +1158,11 @@ function openPlay(){
   document.getElementById('preRunOverlay').style.display='flex';
   document.getElementById('gameOverOverlay').style.display='none';
   const stats = computeStats();
-  document.getElementById('preRunDesc').textContent = `${charById(player.equippedCharacter).name} leaps off the cliff and takes flight! (Speed ${stats.speed} · Energy ${stats.energy} · Power ${stats.power})`;
+  document.getElementById('preRunDesc').textContent = charById(player.equippedCharacter).name + ' leaps off the cliff and takes flight! (Speed '+stats.speed+' | Energy '+stats.energy+' | Power '+stats.power+')';
   if(!G.loopStarted){ G.loopStarted=true; requestAnimationFrame(flightLoop); }
 }
 function exitPlay(){
-  G.running=false;
+  if(G) G.running=false;
   document.getElementById('playScreen').style.display='none';
   refreshTopbar();
 }
@@ -1190,152 +1174,250 @@ async function beginRun(){
   document.getElementById('preRunOverlay').style.display='none';
   document.getElementById('gameOverOverlay').style.display='none';
 
-  // clear old obstacles
-  G.obstacles.forEach(o=>G.scene.remove(o.mesh));
-  G.obstacles = [];
+  G.obstacles = []; G.particles = [];
   G.running = true; G.score=0; G.combo=1; G.lives=3; G.distance=0; G.coinsCollected=0; G.gatesPassed=0;
-  G.speed=16; G.lastSpawnZ=-20; G.elapsed=0; G.lastBiomeSwitch=0;
-  G.playerX=0; G.playerY=1.2; G.targetX=0; G.targetY=1.2;
-  G.charGroup.position.set(0,-1.5,4);
+  G.speed=230; G.lastSpawnX=G.w+200; G.elapsed=0; G.lastBiomeSwitch=0;
+  G.playerX = G.w*0.26; G.playerY = G.h*0.5; G.targetY = G.h*0.5; G.velY=0;
 
   updateHUD();
-  // jump-off animation
-  let t=0;
-  const jumpAnim = setInterval(()=>{
-    t+=0.05;
-    G.charGroup.position.y = -1.5 + Math.min(1, t)*2.7;
-    G.charGroup.rotation.x = Math.min(1,t)*-0.3;
-    if(t>=1){ clearInterval(jumpAnim); G.charGroup.position.y=1.2; G.charGroup.rotation.x=0; }
-  },30);
 }
 
 function spawnObstacle(){
-  const z = G.lastSpawnZ - (14 + Math.random()*8);
-  G.lastSpawnZ = z;
+  const gap = 220 + Math.random()*90;
+  G.lastSpawnX += gap;
+  const x = G.lastSpawnX;
   const roll = Math.random();
-  let obstacle;
+  const marginTop = G.h*0.12, marginBottom = G.h*0.88;
   if(roll<0.4){
-    // ring gate
-    const gx = (Math.random()-0.5)*6, gy = 0.6+Math.random()*2.4;
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(1.15,0.12,10,24), new THREE.MeshStandardMaterial({color:BIOMES[G.biomeIndex].accent, emissive:BIOMES[G.biomeIndex].accent, emissiveIntensity:0.4}));
-    mesh.position.set(gx,gy,z);
-    G.scene.add(mesh);
-    obstacle = {mesh,type:'gate',x:gx,y:gy,z,radius:0.95,passed:false};
+    const gy = marginTop + Math.random()*(marginBottom-marginTop);
+    G.obstacles.push({type:'gate', x, y:gy, r:56, passed:false});
   } else if(roll<0.75){
-    // wall with gap (hard obstacle)
-    const gapX=(Math.random()-0.5)*5, gapY=0.6+Math.random()*2.2;
-    const group = new THREE.Group();
-    const matWall = new THREE.MeshStandardMaterial({color:0x333344});
-    const left = new THREE.Mesh(new THREE.BoxGeometry(4,4.5,0.4), matWall);
-    left.position.set(gapX-2.9,1.6,0); group.add(left);
-    const right = new THREE.Mesh(new THREE.BoxGeometry(4,4.5,0.4), matWall);
-    right.position.set(gapX+2.9,1.6,0); group.add(right);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(2,4.5,0.4), matWall);
-    top.position.set(gapX,gapY+2.4,0); group.add(top);
-    group.position.z = z;
-    G.scene.add(group);
-    obstacle = {mesh:group,type:'wall',x:gapX,y:gapY,z,gapHalfX:0.9,gapHalfY:0.85,passed:false};
+    const gy = marginTop + Math.random()*(marginBottom-marginTop);
+    const gapH = 130;
+    G.obstacles.push({type:'wall', x, y:gy, gapH, w:46, passed:false});
   } else {
-    // coin cluster
-    const cx=(Math.random()-0.5)*6, cy=0.8+Math.random()*2;
-    const group = new THREE.Group();
-    for(let i=0;i<4;i++){
-      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,0.06,12), new THREE.MeshStandardMaterial({color:0xffd700, emissive:0x996b00, emissiveIntensity:0.5}));
-      coin.rotation.x=Math.PI/2; coin.position.set((i-1.5)*0.5,0,0);
-      group.add(coin);
-    }
-    group.position.set(cx,cy,z);
-    G.scene.add(group);
-    obstacle = {mesh:group,type:'coin',x:cx,y:cy,z,radius:1.4,collected:false};
+    const gy = marginTop + Math.random()*(marginBottom-marginTop);
+    G.obstacles.push({type:'coin', x, y:gy, r:44, collected:false, n:4});
   }
-  G.obstacles.push(obstacle);
 }
 
 function updateHUD(){
   document.getElementById('hudScore').textContent = Math.floor(G.score);
   document.getElementById('hudCombo').textContent = 'Combo x'+G.combo.toFixed(1);
-  document.getElementById('hudLives').textContent = '❤️'.repeat(Math.max(0,G.lives))+'🖤'.repeat(Math.max(0,3-G.lives));
+  const el = document.getElementById('hudLives');
+  let s = '';
+  for(let i=0;i<3;i++){ s += i<G.lives ? '\u2764' : '\uD83D\uDDA4'; }
+  el.textContent = s;
+}
+
+function spawnParticles(x,y,color,count){
+  for(let i=0;i<count;i++){
+    G.particles.push({x,y,vx:(Math.random()-0.5)*160,vy:(Math.random()-0.5)*160,life:0.5,maxLife:0.5,color});
+  }
 }
 
 let lastTs = 0;
 function flightLoop(ts){
   requestAnimationFrame(flightLoop);
-  if(!G || !G.running){ if(G) G.renderer.render(G.scene,G.camera); lastTs=ts; return; }
+  if(!G) return;
   const dt = Math.min(0.05,(ts-lastTs)/1000||0.016); lastTs=ts;
+  drawFrame(dt);
+}
+
+function drawFrame(dt){
+  const ctx = G.ctx, w = G.w, h = G.h;
+  ctx.clearRect(0,0,w,h);
+
+  const sky = ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0, G.biomeSky1||'#05050f');
+  sky.addColorStop(1, shadeColor(G.biomeSky1||'#05050f', -20));
+  ctx.fillStyle = sky; ctx.fillRect(0,0,w,h);
+
+  ctx.save();
+  G.clouds.forEach(c=>{
+    c.x -= (G.running? G.speed*0.15*c.layer : 6*c.layer) * dt;
+    if(c.x < -80) c.x = w+80;
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,255,255,'+(c.layer===1?0.10:0.18)+')';
+    ctx.arc(c.x,c.y,c.r,0,Math.PI*2);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  const groundY = h*0.92;
+  const gGrad = ctx.createLinearGradient(0,groundY,0,h);
+  gGrad.addColorStop(0, G.biomeGround||'#141430');
+  gGrad.addColorStop(1, shadeColor(G.biomeGround||'#141430', -25));
+  ctx.fillStyle = gGrad;
+  ctx.fillRect(0,groundY,w,h-groundY);
+
+  if(!G.running){ drawCharacter(); return; }
+
   G.elapsed += dt;
+  G.speed = 230 + Math.min(260, G.elapsed*7);
 
-  // difficulty ramp
-  G.speed = 16 + Math.min(18, G.elapsed*0.5);
+  while(G.lastSpawnX < G.playerX + w + 260){ spawnObstacle(); }
 
-  // player movement (lerp toward target)
-  G.playerX += (G.targetX-G.playerX)*Math.min(1,dt*7);
-  G.playerY += (G.targetY-G.playerY)*Math.min(1,dt*7);
-  G.playerY = Math.max(0.3, Math.min(3.6, G.playerY));
-  G.charGroup.position.x = G.playerX;
-  G.charGroup.position.y = G.playerY;
-  G.charGroup.rotation.z = (G.targetX-G.playerX)*-0.25;
-  G.wingL.rotation.z = Math.sin(G.elapsed*14)*0.4;
-  G.wingR.rotation.z = -Math.sin(G.elapsed*14)*0.4;
+  if(G.elapsed - G.lastBiomeSwitch > 30){ G.lastBiomeSwitch = G.elapsed; nextBiome(); }
 
-  G.distance += G.speed*dt;
+  G.distance += G.speed*dt*0.12;
 
-  // spawn obstacles ahead
-  while(G.lastSpawnZ > G.charGroup.position.z-90){ spawnObstacle(); }
+  const prevY = G.playerY;
+  G.playerY += (G.targetY-G.playerY)*Math.min(1,dt*8);
+  G.velY = (G.playerY-prevY)/Math.max(dt,0.001);
+  G.flapPhase += dt*10;
 
-  // biome switch every ~35s
-  if(G.elapsed - G.lastBiomeSwitch > 35){ G.lastBiomeSwitch = G.elapsed; nextBiome(); }
-
-  // move obstacles toward player & handle collision
   for(let i=G.obstacles.length-1;i>=0;i--){
     const o = G.obstacles[i];
-    o.mesh.position.z += G.speed*dt;
-    o.z += G.speed*dt;
-    const dz = o.z - G.charGroup.position.z;
+    o.x -= G.speed*dt;
+    const dx = o.x - G.playerX;
 
-    if(o.type==='gate' && !o.passed && Math.abs(dz)<0.6){
-      o.passed=true;
-      const dist = Math.hypot(o.x-G.playerX, o.y-G.playerY);
-      if(dist < o.radius){
+    if(o.type==='gate' && !o.passed && dx < 8){
+      o.passed = true;
+      const dist = Math.abs(o.y - G.playerY);
+      if(dist < o.r*0.62){
         G.score += 25*G.combo; G.combo=Math.min(5,G.combo+0.2); G.gatesPassed++;
         player.dailyQuestProgress['q_gates']=(player.dailyQuestProgress['q_gates']||0)+1;
+        spawnParticles(G.playerX,G.playerY,G.biomeAccent,14);
       } else {
-        G.combo=1; G.lives--; flashHit();
+        G.combo=1; G.lives--; flashHit(); spawnParticles(G.playerX,G.playerY,'#ff5470',14);
       }
       updateHUD();
     }
-    if(o.type==='wall' && !o.passed && Math.abs(dz)<0.6){
-      o.passed=true;
-      const inGapX = Math.abs(G.playerX-o.x) < o.gapHalfX;
-      const inGapY = Math.abs(G.playerY-o.y) < o.gapHalfY;
-      if(inGapX && inGapY){ G.score += 15*G.combo; G.combo=Math.min(5,G.combo+0.15); }
-      else { G.combo=1; G.lives--; flashHit(); }
+    if(o.type==='wall' && !o.passed && dx < 8){
+      o.passed = true;
+      const inGap = Math.abs(G.playerY-o.y) < o.gapH/2 - 14;
+      if(inGap){ G.score += 15*G.combo; G.combo=Math.min(5,G.combo+0.15); }
+      else { G.combo=1; G.lives--; flashHit(); spawnParticles(G.playerX,G.playerY,'#ff5470',14); }
       updateHUD();
     }
-    if(o.type==='coin' && !o.collected){
-      const dist3 = Math.hypot(o.x-G.playerX, o.y-G.playerY, dz);
-      if(dist3 < 1.0){
-        o.collected=true; o.mesh.visible=false;
-        G.score += 5; G.coinsCollected++;
-        player.dailyQuestProgress['q_coins']=(player.dailyQuestProgress['q_coins']||0)+1;
-        updateHUD();
-      }
+    if(o.type==='coin' && !o.collected && Math.abs(dx)<34 && Math.abs(o.y-G.playerY)<34){
+      o.collected = true;
+      G.score += 5; G.coinsCollected++;
+      player.dailyQuestProgress['q_coins']=(player.dailyQuestProgress['q_coins']||0)+1;
+      spawnParticles(o.x,o.y,'#ffd700',10);
+      updateHUD();
     }
-
-    if(o.z > G.charGroup.position.z+6){
-      G.scene.remove(o.mesh); G.obstacles.splice(i,1);
-    }
+    if(o.x < -120) G.obstacles.splice(i,1);
   }
 
   player.dailyQuestProgress['q_distance']=Math.max(player.dailyQuestProgress['q_distance']||0, Math.floor(G.distance));
   player.dailyQuestProgress['q_score']=Math.max(player.dailyQuestProgress['q_score']||0, Math.floor(G.score));
 
-  if(G.lives<=0){ endRun(); }
+  G.obstacles.forEach(o=>drawObstacle(o));
 
-  G.renderer.render(G.scene,G.camera);
+  for(let i=G.particles.length-1;i>=0;i--){
+    const p = G.particles[i];
+    p.x += p.vx*dt; p.y += p.vy*dt; p.life -= dt;
+    if(p.life<=0){ G.particles.splice(i,1); continue; }
+    ctx.globalAlpha = Math.max(0,p.life/p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  drawCharacter();
+
+  if(G.lives<=0){ endRun(); }
 }
+
+function drawObstacle(o){
+  const ctx = G.ctx;
+  if(o.type==='gate'){
+    ctx.save();
+    ctx.shadowColor = G.biomeAccent; ctx.shadowBlur = 18;
+    ctx.strokeStyle = G.biomeAccent; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.5)';
+    ctx.beginPath(); ctx.arc(o.x,o.y,o.r-6,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  } else if(o.type==='wall'){
+    const gapTop = o.y - o.gapH/2, gapBottom = o.y + o.gapH/2;
+    const grad = ctx.createLinearGradient(o.x-o.w/2,0,o.x+o.w/2,0);
+    grad.addColorStop(0,'#2a2f4d'); grad.addColorStop(1,'#3a3f66');
+    ctx.fillStyle = grad;
+    ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=10;
+    ctx.fillRect(o.x-o.w/2, 0, o.w, Math.max(0,gapTop));
+    ctx.fillRect(o.x-o.w/2, gapBottom, o.w, G.h-gapBottom);
+    ctx.shadowBlur=0;
+    ctx.strokeStyle = G.biomeAccent; ctx.lineWidth=3;
+    ctx.strokeRect(o.x-o.w/2, gapTop-3, o.w, 3);
+    ctx.strokeRect(o.x-o.w/2, gapBottom, o.w, 3);
+  } else if(o.type==='coin' && !o.collected){
+    for(let i=0;i<o.n;i++){
+      const cy = o.y + (i-(o.n-1)/2)*26;
+      ctx.save();
+      ctx.translate(o.x, cy);
+      ctx.shadowColor='#ffd700'; ctx.shadowBlur=14;
+      const grad = ctx.createRadialGradient(-4,-4,2,0,0,16);
+      grad.addColorStop(0,'#fff3b0'); grad.addColorStop(1,'#e0a800');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function drawCharacter(){
+  const ctx = G.ctx;
+  const x = G.playerX, y = G.playerY;
+  const tilt = Math.max(-0.5, Math.min(0.5, (G.velY||0)*0.0016));
+  const flap = Math.sin(G.flapPhase||0);
+
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(tilt);
+
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = G.colors.accent;
+  ctx.shadowColor = G.colors.accent; ctx.shadowBlur = 22;
+  ctx.beginPath(); ctx.ellipse(-30,4,20,10,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = G.colors.accent;
+  ctx.save(); ctx.rotate(flap*0.5-0.2);
+  ctx.beginPath(); ctx.ellipse(-14,0,22,9,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.rotate(-flap*0.5+0.2);
+  ctx.beginPath(); ctx.ellipse(14,0,22,9,0,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  const bodyGrad = ctx.createRadialGradient(-8,-8,4,0,0,26);
+  bodyGrad.addColorStop(0, shadeColor(G.colors.body,25));
+  bodyGrad.addColorStop(1, G.colors.body);
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill();
+
+  ctx.beginPath(); ctx.arc(10,-16,14,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(2,-26); ctx.lineTo(-2,-40); ctx.lineTo(8,-30); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(16,-28); ctx.lineTo(22,-42); ctx.lineTo(24,-28); ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#0a0a12';
+  ctx.beginPath(); ctx.arc(15,-17,2.4,0,Math.PI*2); ctx.fill();
+
+  ctx.strokeStyle = G.colors.accent; ctx.lineWidth = 3; ctx.globalAlpha=0.8;
+  ctx.beginPath(); ctx.arc(0,10,26,0.2*Math.PI,0.8*Math.PI); ctx.stroke();
+  ctx.globalAlpha=1;
+
+  ctx.restore();
+}
+
+function shadeColor(hex, percent){
+  hex = hex.replace('#','');
+  if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+  const num = parseInt(hex,16);
+  let r=(num>>16)+Math.round(255*percent/100);
+  let g=((num>>8)&0xff)+Math.round(255*percent/100);
+  let b=(num&0xff)+Math.round(255*percent/100);
+  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+  return '#'+(r<<16|g<<8|b).toString(16).padStart(6,'0');
+}
+
 function flashHit(){
-  document.getElementById('gameCanvasWrap').style.filter='brightness(1.8) saturate(0)';
-  setTimeout(()=>{ document.getElementById('gameCanvasWrap').style.filter='none'; },120);
+  const wrap = document.getElementById('gameCanvasWrap');
+  wrap.style.filter='brightness(1.8) saturate(0)';
+  setTimeout(()=>{ wrap.style.filter='none'; },120);
 }
 
 async function endRun(){
@@ -1353,7 +1435,7 @@ async function endRun(){
   refreshTopbar();
 
   document.getElementById('gameOverStats').innerHTML =
-    `Score: <b style="color:var(--gold)">${fmt(finalScore)}</b> · Coins earned: <b style="color:var(--cyan)">+${fmt(coinsEarned)}</b><br>Distance: ${fmt(G.distance)}m · Gates: ${G.gatesPassed} · Coins collected: ${G.coinsCollected}`;
+    'Score: <b style="color:var(--gold)">'+fmt(finalScore)+'</b> &middot; Coins earned: <b style="color:var(--cyan)">+'+fmt(coinsEarned)+'</b><br>Distance: '+fmt(G.distance)+'m &middot; Gates: '+G.gatesPassed+' &middot; Coins collected: '+G.coinsCollected;
   document.getElementById('gameOverOverlay').style.display='flex';
 }
 
